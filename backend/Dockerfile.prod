@@ -1,29 +1,16 @@
-# Backend Production Dockerfile - 使用 uv 进行包管理
+# Backend Production Dockerfile - 使用 uv 官方镜像
 
-FROM python:3.11-slim AS builder
+# 构建阶段 - 使用 uv 官方镜像（已内置 uv，无需安装）
+FROM ghcr.io/astral-sh/uv:python3.11-slim AS builder
 
-# 设置工作目录
 WORKDIR /app
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y \
-    gcc \
-    postgresql-client \
-    curl \
-    nodejs \
-    npm \
-    && rm -rf /var/lib/apt/lists/*
-
-# 安装 uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
-
 # 复制项目文件
-COPY pyproject.toml .
-COPY uv.lock* .
+COPY pyproject.toml uv.lock* ./
 
-# 使用 uv 安装依赖（生产环境，不安装开发依赖）
-RUN uv sync --frozen --no-dev
+# 使用 cache mount 加速依赖安装（生产环境，不安装开发依赖）
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
 # 复制应用代码
 COPY . .
@@ -33,9 +20,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装运行时依赖
+# 只安装必需的运行时依赖：nodejs/npm（MCP server）和 curl（healthcheck）
 RUN apt-get update && apt-get install -y \
-    postgresql-client \
     nodejs \
     npm \
     curl \
@@ -44,11 +30,8 @@ RUN apt-get update && apt-get install -y \
 # 安装 npx (用于 MCP server)
 RUN npm install -g npx
 
-# 安装 uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
-
 # 从 builder 复制虚拟环境和代码
+COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app /app
 
 # 创建非 root 用户
@@ -58,6 +41,9 @@ RUN useradd -m -u 1000 appuser && \
 # 切换到非 root 用户
 USER appuser
 
+# 设置 PATH 使用虚拟环境
+ENV PATH="/app/.venv/bin:$PATH"
+
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
@@ -65,8 +51,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 # 暴露端口
 EXPOSE 8000
 
-# 启动命令 - 生产环境使用更多 workers
-CMD ["uv", "run", "uvicorn", "src.main:app", \
+# 启动命令 - 直接使用虚拟环境中的 uvicorn
+CMD ["uvicorn", "src.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
      "--workers", "4", \
