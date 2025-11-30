@@ -1,0 +1,468 @@
+openapi: 3.1.0
+info:
+  title: AI对话系统 REST API
+  version: 1.0.0
+  description: |
+    AI对话系统的REST API规范，提供会话管理和历史消息检索功能。
+
+    **功能特性**:
+    - 会话管理（创建、列表、详情）
+    - 消息发送和历史检索
+    - 图表数据查询
+
+    **认证方式**: HTTP-only会话cookie
+
+    **相关文档**:
+    - 实时流式传输API见 `asyncapi.yaml` (SSE事件流)
+    - 数据模型见 `data-model.md`
+  contact:
+    name: API支持
+    email: support@example.com
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000/api
+    description: 本地开发环境
+  - url: https://api.example.com/api
+    description: 生产环境
+
+tags:
+  - name: sessions
+    description: 会话管理
+  - name: messages
+    description: 消息操作
+  - name: charts
+    description: 图表查询
+
+paths:
+  /sessions:
+    get:
+      tags: [sessions]
+      summary: 获取会话列表
+      description: 获取当前用户的所有会话，按最后更新时间倒序排列。支持键集分页。
+      operationId: listSessions
+      parameters:
+        - name: limit
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: cursor
+          in: query
+          description: 分页游标（上一页最后一条记录的updated_at时间戳）
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: 成功返回会话列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SessionSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [sessions]
+      summary: 创建新会话
+      description: 创建一个新的对话会话
+      operationId: createSession
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  description: 会话标题（可选，未提供时从首条消息生成）
+                  maxLength: 255
+      responses:
+        '201':
+          description: 成功创建会话
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /sessions/{sessionId}:
+    get:
+      tags: [sessions]
+      summary: 获取会话详情
+      description: 获取指定会话的详细信息，包括元数据但不包括消息列表
+      operationId: getSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: 会话UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 成功返回会话详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [sessions]
+      summary: 删除会话
+      description: 软删除指定会话（设置deleted_at字段）
+      operationId: deleteSession
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: 会话UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: 成功删除会话
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /sessions/{sessionId}/messages:
+    get:
+      tags: [messages]
+      summary: 获取会话消息历史
+      description: 获取指定会话的所有消息，按序号排序。每条消息包含关联的图表数据。
+      operationId: getSessionMessages
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: 会话UUID
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: after_sequence
+          in: query
+          description: 起始序号（键集分页，获取序号大于此值的消息）
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: 成功返回消息列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [messages]
+      summary: 发送消息
+      description: |
+        向指定会话发送用户消息。响应返回消息ID，实际AI回复通过SSE流式传输。
+
+        **流程**:
+        1. POST /sessions/{sessionId}/messages (此端点) - 发送用户消息
+        2. 建立SSE连接 GET /sessions/{sessionId}/stream - 接收AI流式回复
+        3. SSE流完成后，再次调用GET /sessions/{sessionId}/messages获取完整历史
+      operationId: sendMessage
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: 会话UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  description: 消息内容
+                  minLength: 1
+                  maxLength: 10000
+      responses:
+        '201':
+          description: 成功发送消息
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message_id:
+                    type: integer
+                    format: int64
+                    description: 用户消息ID
+                  session_id:
+                    type: string
+                    format: uuid
+                    description: 会话UUID
+                  stream_url:
+                    type: string
+                    description: SSE流URL，用于接收AI回复
+                    example: /api/sessions/123e4567-e89b-12d3-a456-426614174000/stream
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /sessions/{sessionId}/stream:
+    get:
+      tags: [messages]
+      summary: SSE流式传输端点
+      description: |
+        **此端点返回text/event-stream，详细规范见asyncapi.yaml**
+
+        建立Server-Sent Events连接，实时接收AI响应流。
+
+        **事件类型**:
+        - `message_chunk`: AI回复文本片段
+        - `chart_ready`: 图表数据就绪
+        - `message_complete`: 消息完成
+        - `error`: 错误信息
+      operationId: streamResponse
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          description: 会话UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: SSE流连接建立
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE事件流（详见asyncapi.yaml）
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  schemas:
+    SessionSummary:
+      type: object
+      description: 会话摘要信息
+      required: [id, user_id, created_at, updated_at, message_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 会话UUID
+        user_id:
+          type: integer
+          format: int64
+          description: 用户ID
+        title:
+          type: string
+          nullable: true
+          description: 会话标题
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间
+        updated_at:
+          type: string
+          format: date-time
+          description: 最后更新时间
+        message_count:
+          type: integer
+          description: 消息数量
+
+    Session:
+      allOf:
+        - $ref: '#/components/schemas/SessionSummary'
+        - type: object
+          properties:
+            deleted_at:
+              type: string
+              format: date-time
+              nullable: true
+              description: 删除时间（软删除）
+
+    Message:
+      type: object
+      description: 对话消息
+      required: [id, session_id, role, content, created_at, sequence]
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 消息ID
+        session_id:
+          type: string
+          format: uuid
+          description: 所属会话UUID
+        role:
+          type: string
+          enum: [user, assistant]
+          description: 消息角色
+        content:
+          type: string
+          description: 消息内容
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间
+        sequence:
+          type: integer
+          description: 会话内消息序号
+        metadata:
+          type: object
+          nullable: true
+          description: 元数据（如tokens、model等）
+        charts:
+          type: array
+          description: 关联的图表数据
+          items:
+            $ref: '#/components/schemas/Chart'
+
+    Chart:
+      type: object
+      description: 图表数据
+      required: [id, message_id, chart_type, chart_config, sequence]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: 图表UUID
+        message_id:
+          type: integer
+          format: int64
+          description: 所属消息ID
+        chart_type:
+          type: string
+          description: 图表类型
+          example: bar
+        chart_config:
+          type: object
+          description: AntV G2图表配置
+          example:
+            type: bar
+            data: [{category: "A", value: 30}]
+            xField: category
+            yField: value
+        sequence:
+          type: integer
+          description: 消息内图表序号
+        created_at:
+          type: string
+          format: date-time
+          description: 创建时间
+
+    Pagination:
+      type: object
+      description: 分页信息
+      properties:
+        next_cursor:
+          type: string
+          nullable: true
+          description: 下一页游标（null表示无更多数据）
+        has_more:
+          type: boolean
+          description: 是否有更多数据
+
+    Error:
+      type: object
+      description: 错误响应
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: 错误代码
+        message:
+          type: string
+          description: 错误描述
+        details:
+          type: object
+          nullable: true
+          description: 详细错误信息
+
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: bad_request
+            message: 请求参数验证失败
+
+    Unauthorized:
+      description: 未认证
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: unauthorized
+            message: 请先登录
+
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: not_found
+            message: 会话不存在
+
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+      description: HTTP-only会话cookie
+
+security:
+  - sessionCookie: []

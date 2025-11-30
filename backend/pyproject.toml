@@ -1,0 +1,118 @@
+[project]
+name = "backend"
+version = "1.0.0"
+description = "Brain AI 对话系统后端服务"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Web Framework
+    "fastapi==0.122.0",
+    "uvicorn[standard]==0.38.0",
+    # Database
+    "asyncpg==0.31.0",
+    "sqlalchemy[asyncio]==2.0.44",
+    "alembic==1.17.2",
+    # Session Management
+    "itsdangerous==2.2.0",
+    # Environment Variables
+    "python-dotenv==1.2.1",
+    # HTTP Client
+    "httpx==0.28.1",
+    "aiohttp==3.12.14",
+    # Validation
+    "pydantic==2.12.4",
+    "pydantic-settings==2.12.0",
+    # Date/Time
+    "python-dateutil==2.9.0",
+    # Logging
+    "python-json-logger==4.0.0",
+    # 通义SDK
+    "dashscope==1.25.2",
+    "psycopg[binary,pool]>=3.2.13",
+    # MCP SDK
+    "mcp>=1.22.0",
+    # LangChain
+    "langchain>=0.3.15",
+    "langchain-community>=0.3.15",
+    "langchain-core>=0.3.28",
+    "langgraph>=0.2.60",
+    "langsmith>=0.2.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Testing
+    "pytest==8.3.3",
+    "pytest-asyncio==0.24.0",
+    "pytest-cov==5.0.0",
+    "httpx-sse==0.4.0",
+
+    # Code Quality
+    "black==24.10.0",
+    "isort==5.13.2",
+    "flake8==7.1.1",
+    "mypy==1.13.0",
+]
+
+[tool.hatch.build.targets.wheel]
+# 1) 如果源码目录直接放在项目根目录，名字为 backend/
+packages = ["backend"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.3",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "httpx-sse>=0.4.0",
+    "black>=24.10.0",
+    "isort>=5.13.2",
+    "flake8>=7.1.1",
+    "mypy>=1.13.0",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+  | alembic/versions
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+# ============================================================================
+# UV包管理器配置
+# ============================================================================
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple" # 使用阿里云PyPI镜像源

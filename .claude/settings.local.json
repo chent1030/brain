@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch:*)",
+      "Bash(/Users/chentao/project/myProject/brain/.specify/scripts/bash/create-new-feature.sh --json --number 1 --short-name \"agent-conversation-system\" \"项目是agent对话,后端使用通义的Deep Research加上mcp server chart,同时可以进行历史会话的存储.前端是对话功能,需要能在对话中展示图表\")",
+      "Bash(.specify/scripts/bash/setup-plan.sh:*)",
+      "WebSearch",
+      "Bash(/Users/chentao/project/myProject/brain/.specify/scripts/bash/update-agent-context.sh:*)",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(chmod:*)",
+      "Bash(export PYTHONDONTWRITEBYTECODE=1)",
+      "Bash(uv run:*)",
+      "Bash(timeout 5 uv run:*)",
+      "Bash(uv sync:*)",
+      "Bash(npm install:*)",
+      "Bash(timeout 10 uv run:*)",
+      "Bash(lsof:*)",
+      "Bash(./start.sh)",
+      "Bash(curl:*)",
+      "Bash(python3:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

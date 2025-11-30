@@ -1,50 +1,164 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+同步影响报告:
+版本: 0.0.0 → 1.0.0 (首次创建项目章程)
+修改的原则: 无 (新建章程)
+新增部分:
+  - 核心原则 (定义了5条原则)
+  - 架构标准
+  - 开发工作流
+  - 治理规则
+模板状态:
+  - ✅ plan-template.md (已验证 - 包含章程检查部分)
+  - ✅ spec-template.md (已验证 - 需求结构对齐)
+  - ✅ tasks-template.md (已验证 - 任务分类对齐)
+待办事项: 无
+-->
 
-## Core Principles
+# Brain 项目章程
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+## 核心原则
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### 一、API优先设计
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+系统必须通过明确定义的API契约保持前后端清晰分离。
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+**规则:**
+- 所有后端功能必须通过REST或WebSocket API暴露
+- API契约必须在实现前编写文档（OpenAPI/AsyncAPI）
+- 前端禁止直接访问后端数据存储
+- API响应必须遵循一致的JSON结构和正确的错误码
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+**理由:** 前端（对话UI）和后端（Deep Research + MCP）独立运行。清晰的契约支持并行开发并防止耦合。
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+### 二、会话持久化
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+所有会话历史必须持久化存储并可检索。
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+**规则:**
+- 每条用户消息、agent响应和图表生成都必须持久化
+- 会话必须支持通过会话ID或时间戳检索
+- 存储模式必须捕获消息顺序、时间戳和元数据
+- 数据保留策略必须文档化
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+**理由:** 历史会话访问是核心功能需求。会话数据丢失会破坏用户体验。
 
-## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
+### 三、可视化集成
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+图表和可视化能力必须无缝集成到对话流程中。
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**规则:**
+- 图表生成请求必须通过MCP服务器协议处理
+- 图表数据必须与会话消息一起存储
+- 前端必须支持渲染多种图表类型（MCP服务器支持的类型）
+- 图表生成失败必须优雅降级并显示错误消息
+
+**理由:** 图表是展示Deep Research结果的关键。集成不良会破坏用户体验。
+
+### 四、测试覆盖
+
+关键路径（对话流程、数据持久化、API集成）必须测试。
+
+**规则:**
+- 契约测试必须验证API端点与文档匹配
+- 集成测试必须验证Deep Research和MCP服务器通信
+- 数据持久化测试必须验证会话存储和检索
+- 前端测试必须验证图表渲染和对话显示
+
+**理由:** 对话系统有复杂的状态管理。测试防止核心功能退化。
+
+### 五、简单性与可维护性
+
+代码必须优先考虑清晰度而非技巧性。
+
+**规则:**
+- 避免过早抽象 - 三个相似实现优于一个复杂抽象
+- 使用技术栈的标准模式（避免自定义框架）
+- 配置必须外部化（禁止硬编码API密钥或端点）
+- 代码必须自文档化 - 仅在逻辑不明显时添加注释
+
+**理由:** AI对话系统快速演进。简单的代码更快适应需求变化。
+
+## 架构标准
+
+### 技术栈
+
+**后端:**
+- 集成通义（Tongyi）Deep Research API
+- MCP（模型上下文协议）服务器用于图表生成
+- 数据库用于会话持久化（指定: PostgreSQL/MongoDB/SQLite）
+
+**前端:**
+- 带消息显示的对话UI
+- 图表渲染组件（基于canvas/SVG）
+- WebSocket或轮询实现实时更新
+
+**必需文档:**
+- API端点规范
+- MCP服务器协议实现细节
+- 会话存储的数据库模式
+
+### 性能要求
+
+- API响应时间: 标准查询<2秒 p95
+- 图表生成: <5秒 p95（取决于MCP服务器能力）
+- 会话历史加载: 最近100条消息<1秒
+- 并发会话: 至少支持100个同时进行的对话
+
+### 安全与数据隐私
+
+- 必须实现API认证（基于令牌或会话）
+- 用户会话数据必须隔离（禁止跨用户数据泄露）
+- MCP服务器通信必须验证和净化
+- 敏感数据（API密钥）禁止记录或暴露
+
+## 开发工作流
+
+### 分支策略
+
+- 功能分支: `###-feature-name` 格式
+- 主分支: 受保护，需要PR审批
+
+### 代码审查要求
+
+- 所有PR必须验证符合核心原则
+- 章程违规必须在PR描述中说明理由
+- 破坏性API变更必须包含迁移计划
+
+### 测试门禁
+
+- API变更必须通过契约测试
+- 集成测试必须在合并前通过
+- 图表渲染变更需要人工测试
+
+### 文档要求
+
+- API变更必须更新OpenAPI/AsyncAPI规范
+- 新功能必须更新quickstart.md
+- 数据库模式变更必须在迁移文件中记录
+
+## 治理
+
+### 修订流程
+
+1. 建议的变更必须记录理由
+2. 章程变更必须根据语义化版本规则递增版本:
+   - **主版本**: 向后不兼容的原则变更（如删除原则）
+   - **次版本**: 新增原则或扩展现有原则
+   - **补丁版本**: 澄清、措辞改进、错误修复
+3. `.specify/templates/` 中的所有模板必须更新以反映变更
+4. 修订批准需要项目维护者签字
+
+### 合规审查
+
+- 所有功能规范必须引用适用原则
+- 实施计划必须包含章程检查部分
+- 代码审查必须标记原则违规
+
+### 版本管理策略
+
+本章程遵循语义化版本。版本递增表示:
+- 破坏性变更需要团队讨论
+- 次要新增可以快速通过
+- 补丁可以立即应用
+
+**版本**: 1.0.0 | **批准日期**: 2025-11-24 | **最后修订**: 2025-11-24

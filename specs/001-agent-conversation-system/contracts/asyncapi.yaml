@@ -1,0 +1,315 @@
+asyncapi: 3.0.0
+info:
+  title: AI对话系统 SSE事件流API
+  version: 1.0.0
+  description: |
+    AI对话系统的Server-Sent Events (SSE)事件流规范，用于实时传输AI响应。
+
+    **功能特性**:
+    - 流式传输AI回复文本（逐字/逐句）
+    - 实时推送图表生成通知
+    - 消息完成和错误事件
+
+    **连接方式**:
+    ```javascript
+    const eventSource = new EventSource('/api/sessions/{sessionId}/stream');
+
+    eventSource.addEventListener('message_chunk', (event) => {
+      const data = JSON.parse(event.data);
+      console.log('文本片段:', data.content);
+    });
+
+    eventSource.addEventListener('chart_ready', (event) => {
+      const data = JSON.parse(event.data);
+      console.log('图表就绪:', data.chart_id);
+    });
+
+    eventSource.addEventListener('message_complete', (event) => {
+      const data = JSON.parse(event.data);
+      console.log('消息完成:', data.message_id);
+      eventSource.close();
+    });
+
+    eventSource.onerror = (error) => {
+      console.error('SSE错误:', error);
+    };
+    ```
+
+    **相关文档**:
+    - REST API规范见 `openapi.yaml`
+    - 数据模型见 `data-model.md`
+
+servers:
+  production:
+    host: api.example.com
+    protocol: https
+    description: 生产环境SSE服务器
+  development:
+    host: localhost:8000
+    protocol: http
+    description: 本地开发环境
+
+channels:
+  sessionStream:
+    address: /api/sessions/{sessionId}/stream
+    messages:
+      messageChunk:
+        $ref: '#/components/messages/MessageChunk'
+      chartReady:
+        $ref: '#/components/messages/ChartReady'
+      messageComplete:
+        $ref: '#/components/messages/MessageComplete'
+      errorEvent:
+        $ref: '#/components/messages/ErrorEvent'
+      keepAlive:
+        $ref: '#/components/messages/KeepAlive'
+    parameters:
+      sessionId:
+        description: 会话UUID
+        schema:
+          type: string
+          format: uuid
+    description: |
+      SSE事件流通道，用于实时传输AI响应。
+
+      **事件顺序**:
+      1. 用户发送POST /api/sessions/{sessionId}/messages
+      2. 建立SSE连接 GET /api/sessions/{sessionId}/stream
+      3. 接收多个`message_chunk`事件（AI逐步生成文本）
+      4. 接收0到多个`chart_ready`事件（图表生成完成）
+      5. 接收`message_complete`事件（AI回复完成）
+      6. 客户端关闭连接
+
+      **错误处理**:
+      - 如果Deep Research或MCP服务器失败，会收到`error`事件
+      - 客户端应实现自动重连机制（EventSource内置）
+
+operations:
+  subscribeToSession:
+    action: receive
+    channel:
+      $ref: '#/channels/sessionStream'
+    summary: 订阅会话事件流
+    description: 建立SSE连接，接收指定会话的AI响应事件流
+
+components:
+  messages:
+    MessageChunk:
+      name: message_chunk
+      title: AI回复文本片段
+      summary: Deep Research生成的文本片段，逐步传输
+      contentType: application/json
+      payload:
+        type: object
+        required: [content, is_final]
+        properties:
+          content:
+            type: string
+            description: 文本片段
+            example: "根据2024年数据分析，全球AI市场规模..."
+          is_final:
+            type: boolean
+            description: 是否是当前文本块的最后一个片段
+          metadata:
+            type: object
+            description: 元数据（可选）
+            properties:
+              token_count:
+                type: integer
+                description: 当前生成的token数
+      examples:
+        - name: textChunk
+          summary: 普通文本片段
+          payload:
+            content: "根据2024年数据分析，"
+            is_final: false
+        - name: finalChunk
+          summary: 最后一个文本片段
+          payload:
+            content: "市场规模预计达到5000亿美元。"
+            is_final: true
+            metadata:
+              token_count: 1234
+
+    ChartReady:
+      name: chart_ready
+      title: 图表生成完成
+      summary: MCP服务器生成图表完成，前端可以渲染
+      contentType: application/json
+      payload:
+        type: object
+        required: [chart_id, chart_type, chart_config, sequence]
+        properties:
+          chart_id:
+            type: string
+            format: uuid
+            description: 图表UUID
+          chart_type:
+            type: string
+            description: 图表类型
+            example: bar
+          chart_config:
+            type: object
+            description: AntV G2图表配置
+          sequence:
+            type: integer
+            description: 消息内图表序号（从0开始）
+      examples:
+        - name: barChart
+          summary: 柱状图示例
+          payload:
+            chart_id: "550e8400-e29b-41d4-a716-446655440000"
+            chart_type: "bar"
+            chart_config:
+              type: "bar"
+              data:
+                - category: "2020"
+                  value: 300
+                - category: "2021"
+                  value: 450
+                - category: "2022"
+                  value: 520
+              xField: "category"
+              yField: "value"
+              title: "AI市场规模（亿美元）"
+            sequence: 0
+        - name: lineChart
+          summary: 折线图示例
+          payload:
+            chart_id: "660e8400-e29b-41d4-a716-446655440001"
+            chart_type: "line"
+            chart_config:
+              type: "line"
+              data:
+                - year: "2020"
+                  value: 100
+                - year: "2021"
+                  value: 150
+                - year: "2022"
+                  value: 230
+              xField: "year"
+              yField: "value"
+              smooth: true
+              title: "市场增长趋势"
+            sequence: 1
+
+    MessageComplete:
+      name: message_complete
+      title: AI回复完成
+      summary: AI回复完成，所有文本和图表已发送
+      contentType: application/json
+      payload:
+        type: object
+        required: [message_id, session_id]
+        properties:
+          message_id:
+            type: integer
+            format: int64
+            description: AI消息ID
+          session_id:
+            type: string
+            format: uuid
+            description: 会话UUID
+          total_tokens:
+            type: integer
+            description: 总token数
+          chart_count:
+            type: integer
+            description: 图表数量
+          duration_ms:
+            type: integer
+            description: 处理耗时（毫秒）
+      examples:
+        - name: complete
+          summary: 回复完成示例
+          payload:
+            message_id: 12345
+            session_id: "123e4567-e89b-12d3-a456-426614174000"
+            total_tokens: 2048
+            chart_count: 2
+            duration_ms: 8500
+
+    ErrorEvent:
+      name: error
+      title: 错误事件
+      summary: Deep Research或MCP服务器错误
+      contentType: application/json
+      payload:
+        type: object
+        required: [error_code, message]
+        properties:
+          error_code:
+            type: string
+            description: 错误代码
+            enum:
+              - deep_research_timeout
+              - deep_research_api_error
+              - mcp_server_error
+              - mcp_timeout
+              - rate_limit_exceeded
+              - internal_error
+          message:
+            type: string
+            description: 错误描述
+          details:
+            type: object
+            description: 详细错误信息（可选）
+          recoverable:
+            type: boolean
+            description: 是否可以重试
+      examples:
+        - name: timeout
+          summary: Deep Research超时
+          payload:
+            error_code: "deep_research_timeout"
+            message: "Deep Research请求超时（>30秒）"
+            recoverable: true
+        - name: mcpError
+          summary: MCP服务器错误
+          payload:
+            error_code: "mcp_server_error"
+            message: "图表生成失败：数据格式不支持"
+            details:
+              chart_type: "unknown_type"
+            recoverable: false
+
+    KeepAlive:
+      name: ping
+      title: 保活心跳
+      summary: 每30秒发送一次，保持SSE连接活跃
+      contentType: text/plain
+      payload:
+        type: string
+        const: "ping"
+      description: |
+        SSE连接保活心跳事件。客户端无需处理此事件，浏览器会自动维护连接。
+
+        **格式**:
+        ```
+        :ping
+        ```
+
+        （SSE注释格式，不会触发客户端事件监听器）
+
+  schemas:
+    SessionId:
+      type: string
+      format: uuid
+      description: 会话唯一标识符
+
+    MessageId:
+      type: integer
+      format: int64
+      description: 消息唯一标识符
+
+    ChartId:
+      type: string
+      format: uuid
+      description: 图表唯一标识符
+
+  securitySchemes:
+    sessionCookie:
+      type: httpApiKey
+      name: session
+      in: cookie
+      description: HTTP-only会话cookie（与REST API共享）
