@@ -1,14 +1,19 @@
-# Backend Production Dockerfile - 使用 uv 官方镜像
+# Backend Production Dockerfile - 优化构建速度
 
-# 构建阶段 - 使用 uv 官方镜像（已内置 uv，无需安装）
-FROM ghcr.io/astral-sh/uv:python3.11-slim AS builder
+# 构建阶段
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
+
+# 安装 curl 和 uv
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN curl -LsSf https://gitee.com/wangnov/uv-custom/releases/download/0.9.13/uv-installer-custom.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
 
 # 复制项目文件
 COPY pyproject.toml uv.lock* ./
 
-# 使用 cache mount 加速依赖安装（生产环境，不安装开发依赖）
+# 使用 uv 安装依赖（生产环境，不安装开发依赖）
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
@@ -51,7 +56,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
 # 暴露端口
 EXPOSE 8000
 
-# 启动命令 - 直接使用虚拟环境中的 uvicorn
+# 启动命令
 CMD ["uvicorn", "src.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
